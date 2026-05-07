@@ -40,6 +40,7 @@ pub async fn file_watcher(
     delete_max_age: i64,
     event_logger: Option<EventLogger>,
     dry_run: bool,
+    exclude_extensions: Vec<String>,
 ) {
     info!("File watcher thread running...");
 
@@ -65,7 +66,7 @@ pub async fn file_watcher(
         tokio::select! {
             Some(event) = rx.recv() => {
                 for path in &event.paths {
-                    if ignored_path(path) {
+                    if ignored_path(path, &exclude_extensions) {
                         continue;
                     }
                     match event.kind {

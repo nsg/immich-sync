@@ -58,6 +58,9 @@ database_path = "/var/lib/sync-service/sync-service.db"
 # Optional: path to structured JSONL event log
 event_log = "/var/log/sync-service/events.jsonl"
 
+# Optional: file extensions to exclude from syncing (case-insensitive)
+exclude_extensions = ["mp4", "MOV", "avi"]
+
 [immich]
 server_url = "http://localhost:2283"
 

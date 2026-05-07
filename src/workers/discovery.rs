@@ -27,6 +27,7 @@ pub async fn discovery_worker(
     user_id: String,
     poll_interval: u64,
     event_logger: Option<EventLogger>,
+    exclude_extensions: Vec<String>,
 ) {
     info!("Discovery worker running...");
 
@@ -46,7 +47,7 @@ pub async fn discovery_worker(
 
             let path = entry.into_path();
 
-            if ignored_path(&path) {
+            if ignored_path(&path, &exclude_extensions) {
                 continue;
             }
 
