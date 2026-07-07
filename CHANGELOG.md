@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.2.0 - 2026-07-07
+
+### Added
+
+- Support for Immich v3. CI now runs the integration test suite against both
+  the latest v2 release and the latest v3 release.
+- The Immich server version is logged at startup.
+
+### Changed
+
+- Asset uploads send RFC 3339 timestamps (`2024-01-15T12:30:00Z`), required
+  by Immich v3's stricter validation and accepted by v2. Existing local
+  databases are unaffected.
+
+### Deprecated
+
+- Immich v2 support. The service logs a warning at startup when it detects a
+  v2 server. Support for Immich v2 will be removed in 0.3.x releases.
+
 ## 0.1.6 - 2026-03-13
 
 ### Fixed
