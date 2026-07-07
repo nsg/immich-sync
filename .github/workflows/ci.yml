@@ -14,11 +14,23 @@ jobs:
     uses: ./.github/workflows/checks.yml
 
   integration-tests:
+    name: integration-tests (immich ${{ matrix.immich.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        immich:
+          # v2 support is deprecated and will be removed in 0.3.x.
+          # Pinned to the last v2 revision of the snap.
+          - name: v2
+            install-args: "--revision=272"
+          # The latest v3 release is published to the edge channel.
+          - name: v3
+            install-args: "--channel=latest/edge"
     steps:
       - name: Install Immich (background)
-        run: sudo snap install immich-distribution &
+        run: sudo snap install immich-distribution ${{ matrix.immich.install-args }} &
 
       - uses: actions/checkout@v4
 
@@ -46,6 +58,11 @@ jobs:
           done
           echo "Immich did not become ready in 120s"
           exit 1
+
+      - name: Show Immich version
+        run: |
+          snap list immich-distribution
+          curl -s http://localhost/api/server/version
 
       - name: Set up Immich test user
         id: immich
