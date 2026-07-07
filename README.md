@@ -35,6 +35,13 @@ I use this to automatically clean up old files. I have a job that removes files 
 - A running Immich instance
 - An Immich API key with the following permissions: `asset.upload`, `asset.read`, `asset.delete`
 
+### Supported Immich versions
+
+Both Immich v2 and v3 are supported, and CI tests against both. Immich v2
+support is deprecated: the service logs a warning at startup when it detects
+a v2 server, and 0.3.x releases will drop v2 support entirely. Upgrade your
+Immich server to v3 to stay on the supported path.
+
 ### Install
 
 1. Go to [Releases](https://github.com/nsg/immich-sync/releases/latest).
