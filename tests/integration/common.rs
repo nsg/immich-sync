@@ -340,6 +340,33 @@ pub fn filter_events_with_detail<'a>(
     events.iter().filter(|e| e["event"].as_str() == Some(event_type) && e["detail"].as_str() == Some(detail)).collect()
 }
 
+/// Wait until all given asset paths are linked to an Immich asset ID in the
+/// service's local database. Dedup of identical-content files can happen in
+/// several timing-dependent ways (same-batch skip, checksum link after upload,
+/// bulk-check reject), so the linked end state is the only reliable signal.
+#[allow(dead_code)]
+pub async fn wait_for_assets_linked(db_path: &Path, user_id: &str, paths: &[&str]) {
+    for _ in 1..=60 {
+        let all_linked = rusqlite::Connection::open_with_flags(db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map(|conn| {
+                paths.iter().all(|p| {
+                    conn.query_row(
+                        "SELECT asset_id IS NOT NULL FROM assets WHERE user_id = ?1 AND asset_path = ?2",
+                        rusqlite::params![user_id, p],
+                        |row| row.get::<_, bool>(0),
+                    )
+                    .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false);
+        if all_linked {
+            return;
+        }
+        sleep(Duration::from_secs(1)).await;
+    }
+    panic!("Assets {paths:?} were not all linked to an Immich asset ID within 60s");
+}
+
 /// Directly modify the sync-service's SQLite DB to set a custom created_at timestamp.
 #[allow(dead_code)]
 pub fn set_asset_created_at(db_path: &Path, asset_path: &str, created_at: &str) {

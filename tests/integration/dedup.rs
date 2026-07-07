@@ -30,9 +30,9 @@ async fn duplicate_content_discovered_and_linked() {
     // Wait for bulk check to process both
     wait_for_event(&el, "upload_check").await;
 
-    // Wait for the one upload to complete and the duplicate to be deduplicated
+    // Wait for the one upload to complete and both files to be linked to the asset
     wait_for_event(&el, "file_uploaded").await;
-    wait_for_event(&el, "upload_skipped_dedup").await;
+    wait_for_assets_linked(&config.database_path(), &config.users[0].user_id, &["dedup_a.jpg", "dedup_b.jpg"]).await;
 
     // Give extra time for upload processing to complete
     sleep(Duration::from_secs(5)).await;
@@ -77,9 +77,14 @@ async fn duplicate_content_inotify_and_linked() {
     wait_for_event_with_path(&el, "file_detected", "inotify_dup_a.jpg").await;
     wait_for_event_with_path(&el, "file_detected", "inotify_dup_b.jpg").await;
 
-    // Wait for the one upload to complete and the duplicate to be deduplicated
+    // Wait for the one upload to complete and both files to be linked to the asset
     wait_for_event(&el, "file_uploaded").await;
-    wait_for_event(&el, "upload_skipped_dedup").await;
+    wait_for_assets_linked(
+        &config.database_path(),
+        &config.users[0].user_id,
+        &["inotify_dup_a.jpg", "inotify_dup_b.jpg"],
+    )
+    .await;
 
     // Give time for upload processing to complete
     sleep(Duration::from_secs(5)).await;
@@ -130,7 +135,12 @@ async fn duplicate_content_across_subdirectories() {
     // Wait for bulk check and upload processing
     wait_for_event(&el, "upload_check").await;
     wait_for_event(&el, "file_uploaded").await;
-    wait_for_event(&el, "upload_skipped_dedup").await;
+    wait_for_assets_linked(
+        &config.database_path(),
+        &config.users[0].user_id,
+        &["album1/photo.jpg", "album2/photo.jpg"],
+    )
+    .await;
 
     // Give extra time for processing
     sleep(Duration::from_secs(5)).await;
