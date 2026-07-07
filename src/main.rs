@@ -8,10 +8,11 @@ mod sync;
 mod workers;
 
 use anyhow::Result;
+use api::ImmichAPI;
 use config::{parse_cli_args, Config};
 use event_log::EventLogger;
 use local_db::LocalDatabase;
-use log::info;
+use log::{info, warn};
 use std::sync::Arc;
 use sync::run_user_sync;
 use tokio::sync::Mutex;
@@ -41,6 +42,8 @@ async fn main() -> Result<()> {
         info!("No users configured, exiting");
         return Ok(());
     }
+
+    check_server_version(&config).await;
 
     let cancel = CancellationToken::new();
 
@@ -88,4 +91,19 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+async fn check_server_version(config: &Config) {
+    let api = ImmichAPI::new(&config.immich.server_url, &config.users[0].user_key);
+    match api.server_version().await {
+        Ok(version) if version.major == 2 => {
+            warn!(
+                "Immich server v{} detected. Immich v2 support is deprecated \
+                 and will be removed in 0.3.x releases — please upgrade to Immich v3",
+                version
+            );
+        }
+        Ok(version) => info!("Immich server v{} detected", version),
+        Err(e) => warn!("Could not determine Immich server version: {:#}", e),
+    }
 }

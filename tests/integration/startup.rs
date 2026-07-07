@@ -11,6 +11,28 @@ use crate::common::*;
 #[tokio::test]
 #[serial]
 #[ignore = "requires Immich installed and configured on localhost"]
+async fn logs_server_version_and_v2_deprecation_warning() {
+    let (config_path, _tmp) = setup_config();
+    let config = Config::load(config_path.to_str().unwrap()).expect("load config");
+
+    let api = ImmichAPI::new(&config.immich.server_url, &config.users[0].user_key);
+    let version = api.server_version().await.expect("get server version");
+
+    let (_guard, log_lines) = start_sync_service(&config_path).await;
+    wait_for_log(&log_lines, "Immich server v").await;
+
+    let logs = log_lines.lock().await;
+    let deprecation_logged = logs.iter().any(|l| l.contains("Immich v2 support is deprecated"));
+    if version.major == 2 {
+        assert!(deprecation_logged, "Expected a v2 deprecation warning against Immich v{version}.\nLogs:\n{logs:?}");
+    } else {
+        assert!(!deprecation_logged, "Unexpected v2 deprecation warning against Immich v{version}.\nLogs:\n{logs:?}");
+    }
+}
+
+#[tokio::test]
+#[serial]
+#[ignore = "requires Immich installed and configured on localhost"]
 async fn discovery_finds_and_uploads_file() {
     let (config_path, _tmp) = setup_config();
     let config = Config::load(config_path.to_str().unwrap()).expect("load config");

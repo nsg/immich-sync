@@ -32,6 +32,19 @@ pub struct BulkCheckInput {
     pub checksum_hex: String,
 }
 
+#[derive(Deserialize, Clone, Copy)]
+pub struct ServerVersion {
+    pub major: u32,
+    pub minor: u32,
+    pub patch: u32,
+}
+
+impl std::fmt::Display for ServerVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
+    }
+}
+
 impl ImmichAPI {
     pub fn new(base_url: &str, api_key: &str) -> Self {
         let base = base_url.trim_end_matches('/');
@@ -146,6 +159,16 @@ impl ImmichAPI {
         }
 
         Ok(())
+    }
+
+    pub async fn server_version(&self) -> Result<ServerVersion> {
+        let resp = self.client.get(self.url("server/version")).send().await.context("GET server/version failed")?;
+        let status = resp.status().as_u16();
+        let body = resp.text().await.unwrap_or_default();
+        if status != 200 {
+            bail!("GET server/version returned status {}. Response: {}", status, body);
+        }
+        serde_json::from_str(&body).with_context(|| format!("Failed to parse server version response: {}", body))
     }
 
     /// Checks which assets already exist on the Immich server.
