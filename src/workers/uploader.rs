@@ -253,7 +253,7 @@ fn asset_info(path: &Path, metadata: &Metadata) -> AssetInfo {
 }
 
 fn timestamp_to_string(ts: f64) -> String {
-    DateTime::<Utc>::from_timestamp(ts as i64, 0).unwrap_or_default().format("%Y-%m-%d %H:%M:%S").to_string()
+    DateTime::<Utc>::from_timestamp(ts as i64, 0).unwrap_or_default().format("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 
 /// Returns the file's creation timestamp as an ISO-like string, using mtime as fallback.
@@ -269,18 +269,18 @@ mod tests {
 
     #[test]
     fn timestamp_epoch_zero() {
-        assert_eq!(timestamp_to_string(0.0), "1970-01-01 00:00:00");
+        assert_eq!(timestamp_to_string(0.0), "1970-01-01T00:00:00Z");
     }
 
     #[test]
     fn timestamp_known_date() {
         // 2024-01-15 12:30:00 UTC = 1705321800
-        assert_eq!(timestamp_to_string(1705321800.0), "2024-01-15 12:30:00");
+        assert_eq!(timestamp_to_string(1705321800.0), "2024-01-15T12:30:00Z");
     }
 
     #[test]
     fn timestamp_fractional_truncated() {
-        assert_eq!(timestamp_to_string(0.999), "1970-01-01 00:00:00");
+        assert_eq!(timestamp_to_string(0.999), "1970-01-01T00:00:00Z");
     }
 
     #[test]
@@ -300,7 +300,7 @@ mod tests {
         let info = asset_info(&file_path, &metadata);
 
         assert_eq!(info.device_asset_id, "IMG_001.jpg-1705321800");
-        assert_eq!(info.file_modified_at, "2024-01-15 12:30:00");
+        assert_eq!(info.file_modified_at, "2024-01-15T12:30:00Z");
     }
 
     #[test]
