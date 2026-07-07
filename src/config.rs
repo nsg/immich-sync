@@ -41,6 +41,8 @@ pub struct Config {
     pub immich: ImmichConfig,
     #[serde(rename = "user")]
     pub users: Vec<UserConfig>,
+    #[serde(default)]
+    pub exclude_extensions: Vec<String>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -173,6 +175,63 @@ path = "/data/photos/user1"
     }
 
     #[test]
+    fn load_config_with_exclude_extensions() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        write!(
+            f,
+            r#"
+database_path = "/data/sync.db"
+exclude_extensions = ["mp4", "MOV", "avi"]
+
+[immich]
+server_url = "http://localhost:2283"
+delete_threshold = 365
+delete_max_age = 3650
+delete_poll_interval = 3600
+import_poll_interval = 86400
+upload_poll_interval = 60
+
+[[user]]
+user_id = "uuid-1"
+user_key = "key-1"
+path = "/data/photos/user1"
+"#
+        )
+        .unwrap();
+
+        let config = Config::load(f.path().to_str().unwrap()).unwrap();
+        assert_eq!(config.exclude_extensions, vec!["mp4", "MOV", "avi"]);
+    }
+
+    #[test]
+    fn load_config_without_exclude_extensions_defaults_empty() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        write!(
+            f,
+            r#"
+database_path = "/data/sync.db"
+
+[immich]
+server_url = "http://localhost:2283"
+delete_threshold = 365
+delete_max_age = 3650
+delete_poll_interval = 3600
+import_poll_interval = 86400
+upload_poll_interval = 60
+
+[[user]]
+user_id = "uuid-1"
+user_key = "key-1"
+path = "/data/photos/user1"
+"#
+        )
+        .unwrap();
+
+        let config = Config::load(f.path().to_str().unwrap()).unwrap();
+        assert!(config.exclude_extensions.is_empty());
+    }
+
+    #[test]
     fn load_missing_file() {
         assert!(Config::load("/nonexistent/config.toml").is_err());
     }
@@ -206,6 +265,7 @@ server_url = "localhost"
                 upload_poll_interval: 60,
             },
             users: vec![],
+            exclude_extensions: vec![],
         };
         assert_eq!(config.database_path(), PathBuf::from("/etc/sync/my.db"));
     }
