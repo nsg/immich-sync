@@ -59,13 +59,14 @@ database_path = "/var/lib/sync-service/sync-service.db"
 event_log = "/var/log/sync-service/events.jsonl"
 
 # Optional: file extensions to exclude from syncing.
-# Matching is case-insensitive, a leading dot is tolerated (".mp4" == "mp4"),
-# and compound extensions like "tar.gz" match the end of the filename.
-# Excluded files are invisible to the service in both directions: they are
-# never uploaded, and filesystem events for them — including deletions — are
-# ignored, so deleting an excluded file from disk never deletes anything in
-# Immich. Copies uploaded before an extension was added are left as-is on
-# the server. At startup, tracked-but-never-uploaded database rows matching
+# Matching is case-insensitive (ASCII), a leading dot is tolerated
+# (".mp4" == "mp4"), and compound extensions like "tar.gz" match the end of
+# the filename. Excluded files are never uploaded, and local filesystem
+# events for them — including deletions — are ignored, so deleting an
+# excluded file from disk never deletes anything in Immich. Copies uploaded
+# before an extension was added are left as-is on the server and keep their
+# database link, so a server-side delete of such an asset still removes the
+# local file. At startup, tracked-but-never-uploaded database rows matching
 # the list are purged (respects --dry-run).
 exclude_extensions = ["mp4", "MOV", "avi"]
 
