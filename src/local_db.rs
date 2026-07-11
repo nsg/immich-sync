@@ -110,7 +110,9 @@ impl LocalDatabase {
         Ok(())
     }
 
-    /// Delete all assets whose file extension matches one of the excluded extensions.
+    /// Delete assets whose file extension matches one of the excluded extensions,
+    /// but only those never uploaded (no Immich asset_id); rows with an asset_id
+    /// are the service's only handle to the server-side copy and must not be purged.
     /// Extensions are matched case-insensitively. Returns the number of deleted rows.
     pub fn delete_assets_by_extension(&self, user_id: &str, extensions: &[String]) -> Result<usize> {
         if extensions.is_empty() {
@@ -118,17 +120,11 @@ impl LocalDatabase {
         }
 
         // Build a LIKE clause for each extension: asset_path LIKE '%.ext'
-        let clauses: Vec<String> = extensions
-            .iter()
-            .enumerate()
-            .map(|(i, _)| format!("LOWER(asset_path) LIKE ?{}", i + 2))
-            .collect();
+        let clauses: Vec<String> =
+            extensions.iter().enumerate().map(|(i, _)| format!("LOWER(asset_path) LIKE ?{}", i + 2)).collect();
         let where_clause = clauses.join(" OR ");
 
-        let sql = format!(
-            "DELETE FROM assets WHERE user_id = ?1 AND ({})",
-            where_clause
-        );
+        let sql = format!("DELETE FROM assets WHERE user_id = ?1 AND asset_id IS NULL AND ({})", where_clause);
 
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(user_id.to_string())];
         for ext in extensions {
@@ -303,17 +299,17 @@ mod tests {
     #[test]
     fn delete_assets_by_extension() {
         let (db, _dir) = test_db();
-        db.upsert_asset("user1", "video.mp4", &[1u8; 20], Some("id-1"), None).unwrap();
+        db.upsert_asset("user1", "video.mp4", &[1u8; 20], None, None).unwrap();
         db.upsert_asset("user1", "clip.MOV", &[2u8; 20], Some("id-2"), None).unwrap();
         db.upsert_asset("user1", "photo.jpg", &[3u8; 20], Some("id-3"), None).unwrap();
         db.upsert_asset("user1", "doc.txt", &[4u8; 20], None, None).unwrap();
 
         let count = db.delete_assets_by_extension("user1", &["mp4".to_string(), "mov".to_string()]).unwrap();
-        assert_eq!(count, 2);
+        assert_eq!(count, 1);
 
-        // mp4 and MOV deleted, jpg and txt remain
+        // Unlinked mp4 deleted; linked MOV survives; jpg and txt untouched
         assert!(db.find_asset_by_path("user1", "video.mp4").unwrap().is_none());
-        assert!(db.find_asset_by_path("user1", "clip.MOV").unwrap().is_none());
+        assert!(db.find_asset_by_path("user1", "clip.MOV").unwrap().is_some());
         assert!(db.find_asset_by_path("user1", "photo.jpg").unwrap().is_some());
         assert!(db.find_asset_by_path("user1", "doc.txt").unwrap().is_some());
     }
@@ -331,7 +327,7 @@ mod tests {
     #[test]
     fn delete_assets_by_extension_case_insensitive() {
         let (db, _dir) = test_db();
-        db.upsert_asset("user1", "video.MP4", &[1u8; 20], Some("id-1"), None).unwrap();
+        db.upsert_asset("user1", "video.MP4", &[1u8; 20], None, None).unwrap();
 
         let count = db.delete_assets_by_extension("user1", &["mp4".to_string()]).unwrap();
         assert_eq!(count, 1);
