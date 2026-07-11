@@ -66,6 +66,8 @@ pub async fn file_watcher(
         tokio::select! {
             Some(event) = rx.recv() => {
                 for path in &event.paths {
+                    // Excluded paths skip every event kind, including Remove:
+                    // deletions of excluded files are deliberately not propagated to Immich.
                     if path_filter.is_ignored(path) {
                         continue;
                     }
