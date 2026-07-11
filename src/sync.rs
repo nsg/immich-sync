@@ -40,7 +40,7 @@ impl PathFilter {
 /// Remove database entries for assets whose file extension matches an excluded extension.
 /// This ensures that previously-tracked files are cleaned up when extensions are added
 /// to the exclude list.
-pub async fn purge_excluded_extensions(local_db: &Mutex<LocalDatabase>, config: &Config) {
+pub async fn purge_excluded_extensions(local_db: &Mutex<LocalDatabase>, config: &Config, dry_run: bool) {
     if config.exclude_extensions.is_empty() {
         return;
     }
@@ -61,6 +61,10 @@ pub async fn purge_excluded_extensions(local_db: &Mutex<LocalDatabase>, config: 
             // path.is_dir() fallback never applies here; only the extension
             // (and dotfile) checks do.
             if !filter.is_ignored(Path::new(&path)) {
+                continue;
+            }
+            if dry_run {
+                info!("Dry-run: would purge {} for user {}", path, user.user_id);
                 continue;
             }
             match db.delete_asset(&user.user_id, &path) {
@@ -267,7 +271,7 @@ mod tests {
         let local_db = purge_test_db(&dir);
         let config = test_config(vec!["mp4".to_string()]);
 
-        purge_excluded_extensions(&local_db, &config).await;
+        purge_excluded_extensions(&local_db, &config, false).await;
 
         let db = local_db.lock().await;
         assert!(db.find_asset_by_path("user1", "video.mp4").unwrap().is_none());
@@ -281,7 +285,21 @@ mod tests {
         let local_db = purge_test_db(&dir);
         let config = test_config(vec![]);
 
-        purge_excluded_extensions(&local_db, &config).await;
+        purge_excluded_extensions(&local_db, &config, false).await;
+
+        let db = local_db.lock().await;
+        assert!(db.find_asset_by_path("user1", "video.mp4").unwrap().is_some());
+        assert!(db.find_asset_by_path("user1", "keep.mp4").unwrap().is_some());
+        assert!(db.find_asset_by_path("user1", "photo.jpg").unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn purge_dry_run_keeps_everything() {
+        let dir = tempfile::tempdir().unwrap();
+        let local_db = purge_test_db(&dir);
+        let config = test_config(vec!["mp4".to_string()]);
+
+        purge_excluded_extensions(&local_db, &config, true).await;
 
         let db = local_db.lock().await;
         assert!(db.find_asset_by_path("user1", "video.mp4").unwrap().is_some());

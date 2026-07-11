@@ -39,7 +39,7 @@ async fn main() -> Result<()> {
     let local_db = Arc::new(Mutex::new(local_db));
 
     // Purge any previously-tracked assets that now match excluded extensions
-    sync::purge_excluded_extensions(&local_db, &config).await;
+    sync::purge_excluded_extensions(&local_db, &config, cli.dry_run).await;
 
     if config.users.is_empty() {
         info!("No users configured, exiting");
