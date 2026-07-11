@@ -3,7 +3,7 @@ use crate::event_log::{workers, EventLogger};
 use crate::hash::hash_file;
 use crate::local_db::LocalDatabase;
 use crate::policy::{evaluate_delete_age, should_propagate_local_delete, DeleteAgeEligibility};
-use crate::sync::ignored_path;
+use crate::sync::PathFilter;
 use log::info;
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use std::collections::HashMap;
@@ -40,6 +40,7 @@ pub async fn file_watcher(
     delete_max_age: i64,
     event_logger: Option<EventLogger>,
     dry_run: bool,
+    path_filter: Arc<PathFilter>,
 ) {
     info!("File watcher thread running...");
 
@@ -65,7 +66,9 @@ pub async fn file_watcher(
         tokio::select! {
             Some(event) = rx.recv() => {
                 for path in &event.paths {
-                    if ignored_path(path) {
+                    // Excluded paths skip every event kind, including Remove:
+                    // deletions of excluded files are deliberately not propagated to Immich.
+                    if path_filter.is_ignored(path) {
                         continue;
                     }
                     match event.kind {
