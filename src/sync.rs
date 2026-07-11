@@ -11,6 +11,8 @@ use crate::event_log::EventLogger;
 use crate::local_db::LocalDatabase;
 use crate::workers::{deletion_watcher, discovery, file_watcher, uploader};
 
+/// `exclude_extensions` entries must be lowercase without a leading dot
+/// (Config::load guarantees this).
 pub fn ignored_path(path: &Path, exclude_extensions: &[String]) -> bool {
     if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
         if name.starts_with('.') {
@@ -18,8 +20,7 @@ pub fn ignored_path(path: &Path, exclude_extensions: &[String]) -> bool {
         }
     }
     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-        let ext_lower = ext.to_lowercase();
-        if exclude_extensions.iter().any(|e| e.to_lowercase() == ext_lower) {
+        if exclude_extensions.iter().any(|e| ext.eq_ignore_ascii_case(e)) {
             return true;
         }
     }
@@ -37,10 +38,7 @@ pub async fn purge_excluded_extensions(local_db: &Mutex<LocalDatabase>, config: 
     for user in &config.users {
         match local_db.lock().await.delete_assets_by_extension(&user.user_id, &config.exclude_extensions) {
             Ok(count) if count > 0 => {
-                info!(
-                    "Purged {} assets with excluded extensions for user {}",
-                    count, user.user_id
-                );
+                info!("Purged {} assets with excluded extensions for user {}", count, user.user_id);
             }
             Ok(_) => {}
             Err(e) => {
@@ -183,18 +181,17 @@ mod tests {
 
     #[test]
     fn excluded_extension() {
-        let excludes = vec!["mp4".to_string(), "MOV".to_string()];
+        let excludes = vec!["mp4".to_string(), "mov".to_string()];
         assert!(ignored_path(Path::new("video.mp4"), &excludes));
-        assert!(ignored_path(Path::new("video.MOV"), &excludes));
         assert!(ignored_path(Path::new("video.mov"), &excludes));
         assert!(!ignored_path(Path::new("photo.jpg"), &excludes));
     }
 
     #[test]
-    fn excluded_extension_case_insensitive() {
-        let excludes = vec!["Mp4".to_string()];
+    fn excluded_extension_file_case_insensitive() {
+        let excludes = vec!["mp4".to_string(), "mov".to_string()];
         assert!(ignored_path(Path::new("video.MP4"), &excludes));
-        assert!(ignored_path(Path::new("video.mp4"), &excludes));
+        assert!(ignored_path(Path::new("video.MOV"), &excludes));
     }
 
     #[test]

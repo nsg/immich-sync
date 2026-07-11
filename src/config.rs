@@ -65,7 +65,13 @@ pub struct UserConfig {
 impl Config {
     pub fn load(path: &str) -> Result<Self> {
         let content = fs::read_to_string(path).with_context(|| format!("Failed to read config file: {}", path))?;
-        let config: Config = toml::from_str(&content).with_context(|| "Failed to parse config file")?;
+        let mut config: Config = toml::from_str(&content).with_context(|| "Failed to parse config file")?;
+        config.exclude_extensions = config
+            .exclude_extensions
+            .iter()
+            .map(|e| e.trim_start_matches('.').to_ascii_lowercase())
+            .filter(|e| !e.is_empty())
+            .collect();
         Ok(config)
     }
 
@@ -181,7 +187,7 @@ path = "/data/photos/user1"
             f,
             r#"
 database_path = "/data/sync.db"
-exclude_extensions = ["mp4", "MOV", "avi"]
+exclude_extensions = ["mp4", ".MOV", "avi"]
 
 [immich]
 server_url = "http://localhost:2283"
@@ -200,7 +206,7 @@ path = "/data/photos/user1"
         .unwrap();
 
         let config = Config::load(f.path().to_str().unwrap()).unwrap();
-        assert_eq!(config.exclude_extensions, vec!["mp4", "MOV", "avi"]);
+        assert_eq!(config.exclude_extensions, vec!["mp4", "mov", "avi"]);
     }
 
     #[test]
