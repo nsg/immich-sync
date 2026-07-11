@@ -21,20 +21,29 @@ impl PathFilter {
     }
 
     /// `exclude_extensions` entries are lowercase without a leading dot
-    /// (Config::load guarantees this).
+    /// (Config::load guarantees this). Entries match the end of the
+    /// filename, so compound extensions like "tar.gz" work; "gz" also
+    /// matches "backup.tar.gz".
     pub fn is_ignored(&self, path: &Path) -> bool {
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
             if name.starts_with('.') {
                 return true;
             }
-        }
-        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-            if self.exclude_extensions.iter().any(|e| ext.eq_ignore_ascii_case(e)) {
+            if self.exclude_extensions.iter().any(|ext| matches_extension(name, ext)) {
                 return true;
             }
         }
         path.is_dir()
     }
+}
+
+fn matches_extension(name: &str, ext: &str) -> bool {
+    // The slice is safe: the preceding byte is ASCII '.', so the boundary
+    // is a char boundary. The length guard requires at least one character
+    // before the dot.
+    name.len() > ext.len() + 1
+        && name.as_bytes()[name.len() - ext.len() - 1] == b'.'
+        && name[name.len() - ext.len()..].eq_ignore_ascii_case(ext)
 }
 
 /// Remove database entries for assets whose file extension matches an excluded extension.
@@ -228,6 +237,27 @@ mod tests {
         let f = PathFilter { exclude_extensions: vec!["mp4".to_string(), "mov".to_string()] };
         assert!(f.is_ignored(Path::new("video.MP4")));
         assert!(f.is_ignored(Path::new("video.MOV")));
+    }
+
+    #[test]
+    fn excluded_compound_extension() {
+        let f = PathFilter { exclude_extensions: vec!["tar.gz".to_string()] };
+        assert!(f.is_ignored(Path::new("backup.tar.gz")));
+        assert!(f.is_ignored(Path::new("backup.TAR.GZ")));
+        assert!(!f.is_ignored(Path::new("notes.gz")));
+        assert!(!f.is_ignored(Path::new("targz")));
+    }
+
+    #[test]
+    fn excluded_suffix_matches_compound_filename() {
+        let f = PathFilter { exclude_extensions: vec!["gz".to_string()] };
+        assert!(f.is_ignored(Path::new("backup.tar.gz")));
+    }
+
+    #[test]
+    fn bare_extension_filename_not_excluded() {
+        let f = PathFilter { exclude_extensions: vec!["mp4".to_string()] };
+        assert!(!f.is_ignored(Path::new("mp4")));
     }
 
     #[test]
