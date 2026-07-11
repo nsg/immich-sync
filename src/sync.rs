@@ -29,11 +29,17 @@ impl PathFilter {
             if name.starts_with('.') {
                 return true;
             }
-            if self.exclude_extensions.iter().any(|ext| matches_extension(name, ext)) {
-                return true;
-            }
         }
-        path.is_dir()
+        self.has_excluded_extension(path) || path.is_dir()
+    }
+
+    /// The extension check alone, with no filesystem access. Safe for
+    /// database asset paths, which are relative to a user directory rather
+    /// than the process working directory.
+    pub fn has_excluded_extension(&self, path: &Path) -> bool {
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|name| self.exclude_extensions.iter().any(|ext| matches_extension(name, ext)))
     }
 }
 
@@ -66,10 +72,7 @@ pub async fn purge_excluded_extensions(local_db: &Mutex<LocalDatabase>, config: 
         };
         let mut count = 0;
         for (path, _) in unlinked {
-            // Asset paths are relative to the user directory, so is_ignored's
-            // path.is_dir() fallback never applies here; only the extension
-            // (and dotfile) checks do.
-            if !filter.is_ignored(Path::new(&path)) {
+            if !filter.has_excluded_extension(Path::new(&path)) {
                 continue;
             }
             if dry_run {
@@ -307,6 +310,21 @@ mod tests {
         assert!(db.find_asset_by_path("user1", "video.mp4").unwrap().is_none());
         assert!(db.find_asset_by_path("user1", "keep.mp4").unwrap().is_some());
         assert!(db.find_asset_by_path("user1", "photo.jpg").unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn purge_ignores_filesystem_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let local_db = purge_test_db(&dir);
+        // "src" is a directory relative to the test working directory; a
+        // database path colliding with it must not count as ignored.
+        local_db.lock().await.upsert_asset("user1", "src", &[4u8; 20], None, None).unwrap();
+        let config = test_config(vec!["mp4".to_string()]);
+
+        purge_excluded_extensions(&local_db, &config, false).await;
+
+        let db = local_db.lock().await;
+        assert!(db.find_asset_by_path("user1", "src").unwrap().is_some());
     }
 
     #[tokio::test]
