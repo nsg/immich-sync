@@ -11,20 +11,30 @@ use crate::event_log::EventLogger;
 use crate::local_db::LocalDatabase;
 use crate::workers::{deletion_watcher, discovery, file_watcher, uploader};
 
-/// `exclude_extensions` entries must be lowercase without a leading dot
-/// (Config::load guarantees this).
-pub fn ignored_path(path: &Path, exclude_extensions: &[String]) -> bool {
-    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-        if name.starts_with('.') {
-            return true;
-        }
+pub struct PathFilter {
+    exclude_extensions: Vec<String>,
+}
+
+impl PathFilter {
+    pub fn from_config(config: &Config) -> Self {
+        Self { exclude_extensions: config.exclude_extensions.clone() }
     }
-    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-        if exclude_extensions.iter().any(|e| ext.eq_ignore_ascii_case(e)) {
-            return true;
+
+    /// `exclude_extensions` entries are lowercase without a leading dot
+    /// (Config::load guarantees this).
+    pub fn is_ignored(&self, path: &Path) -> bool {
+        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            if name.starts_with('.') {
+                return true;
+            }
         }
+        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            if self.exclude_extensions.iter().any(|e| ext.eq_ignore_ascii_case(e)) {
+                return true;
+            }
+        }
+        path.is_dir()
     }
-    path.is_dir()
 }
 
 /// Remove database entries for assets whose file extension matches an excluded extension.
@@ -70,6 +80,8 @@ pub async fn run_user_sync(
         anyhow::bail!("User path does not exist: {}", user_path.display());
     }
 
+    let path_filter = Arc::new(PathFilter::from_config(config));
+
     let import_handle = tokio::spawn(discovery::discovery_worker(
         cancel.clone(),
         Arc::clone(&local_db),
@@ -77,7 +89,7 @@ pub async fn run_user_sync(
         user.user_id.clone(),
         config.immich.import_poll_interval,
         event_logger.clone(),
-        config.exclude_extensions.clone(),
+        Arc::clone(&path_filter),
     ));
 
     let upload_handle = tokio::spawn(uploader::upload_worker(
@@ -101,7 +113,7 @@ pub async fn run_user_sync(
         config.immich.delete_max_age,
         event_logger.clone(),
         dry_run,
-        config.exclude_extensions.clone(),
+        Arc::clone(&path_filter),
     ));
 
     let deletion_handle = tokio::spawn(deletion_watcher::deletion_watcher(
@@ -149,9 +161,10 @@ mod tests {
 
     #[test]
     fn ignored_dotfiles() {
-        assert!(ignored_path(Path::new("/data/.hidden"), &[]));
-        assert!(ignored_path(Path::new("/data/.DS_Store"), &[]));
-        assert!(ignored_path(Path::new(".gitignore"), &[]));
+        let f = PathFilter { exclude_extensions: vec![] };
+        assert!(f.is_ignored(Path::new("/data/.hidden")));
+        assert!(f.is_ignored(Path::new("/data/.DS_Store")));
+        assert!(f.is_ignored(Path::new(".gitignore")));
     }
 
     #[test]
@@ -159,7 +172,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().join("subdir");
         std::fs::create_dir(&dir).unwrap();
-        assert!(ignored_path(&dir, &[]));
+        let f = PathFilter { exclude_extensions: vec![] };
+        assert!(f.is_ignored(&dir));
     }
 
     #[test]
@@ -167,7 +181,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let file = tmp.path().join("photo.jpg");
         std::fs::write(&file, b"data").unwrap();
-        assert!(!ignored_path(&file, &[]));
+        let f = PathFilter { exclude_extensions: vec![] };
+        assert!(!f.is_ignored(&file));
     }
 
     #[test]
@@ -176,26 +191,28 @@ mod tests {
         let nested = tmp.path().join("album/photo.png");
         std::fs::create_dir_all(nested.parent().unwrap()).unwrap();
         std::fs::write(&nested, b"data").unwrap();
-        assert!(!ignored_path(&nested, &[]));
+        let f = PathFilter { exclude_extensions: vec![] };
+        assert!(!f.is_ignored(&nested));
     }
 
     #[test]
     fn excluded_extension() {
-        let excludes = vec!["mp4".to_string(), "mov".to_string()];
-        assert!(ignored_path(Path::new("video.mp4"), &excludes));
-        assert!(ignored_path(Path::new("video.mov"), &excludes));
-        assert!(!ignored_path(Path::new("photo.jpg"), &excludes));
+        let f = PathFilter { exclude_extensions: vec!["mp4".to_string(), "mov".to_string()] };
+        assert!(f.is_ignored(Path::new("video.mp4")));
+        assert!(f.is_ignored(Path::new("video.mov")));
+        assert!(!f.is_ignored(Path::new("photo.jpg")));
     }
 
     #[test]
     fn excluded_extension_file_case_insensitive() {
-        let excludes = vec!["mp4".to_string(), "mov".to_string()];
-        assert!(ignored_path(Path::new("video.MP4"), &excludes));
-        assert!(ignored_path(Path::new("video.MOV"), &excludes));
+        let f = PathFilter { exclude_extensions: vec!["mp4".to_string(), "mov".to_string()] };
+        assert!(f.is_ignored(Path::new("video.MP4")));
+        assert!(f.is_ignored(Path::new("video.MOV")));
     }
 
     #[test]
     fn no_excludes_allows_all() {
-        assert!(!ignored_path(Path::new("video.mp4"), &[]));
+        let f = PathFilter { exclude_extensions: vec![] };
+        assert!(!f.is_ignored(Path::new("video.mp4")));
     }
 }

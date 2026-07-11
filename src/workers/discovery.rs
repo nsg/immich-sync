@@ -1,7 +1,7 @@
 use crate::event_log::{workers, EventLogger};
 use crate::hash::hash_file;
 use crate::local_db::LocalDatabase;
-use crate::sync::ignored_path;
+use crate::sync::PathFilter;
 use log::info;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -27,7 +27,7 @@ pub async fn discovery_worker(
     user_id: String,
     poll_interval: u64,
     event_logger: Option<EventLogger>,
-    exclude_extensions: Vec<String>,
+    path_filter: Arc<PathFilter>,
 ) {
     info!("Discovery worker running...");
 
@@ -47,7 +47,7 @@ pub async fn discovery_worker(
 
             let path = entry.into_path();
 
-            if ignored_path(&path, &exclude_extensions) {
+            if path_filter.is_ignored(&path) {
                 continue;
             }
 
