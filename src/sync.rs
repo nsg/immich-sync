@@ -45,15 +45,31 @@ pub async fn purge_excluded_extensions(local_db: &Mutex<LocalDatabase>, config: 
         return;
     }
 
+    let filter = PathFilter::from_config(config);
     for user in &config.users {
-        match local_db.lock().await.delete_assets_by_extension(&user.user_id, &config.exclude_extensions) {
-            Ok(count) if count > 0 => {
-                info!("Purged {} assets with excluded extensions for user {}", count, user.user_id);
-            }
-            Ok(_) => {}
+        let db = local_db.lock().await;
+        let unlinked = match db.find_unlinked_assets(&user.user_id) {
+            Ok(v) => v,
             Err(e) => {
-                info!("Failed to purge excluded extensions for user {}: {}", user.user_id, e);
+                info!("Failed to list assets for user {}: {}", user.user_id, e);
+                continue;
             }
+        };
+        let mut count = 0;
+        for (path, _) in unlinked {
+            // Asset paths are relative to the user directory, so is_ignored's
+            // path.is_dir() fallback never applies here; only the extension
+            // (and dotfile) checks do.
+            if !filter.is_ignored(Path::new(&path)) {
+                continue;
+            }
+            match db.delete_asset(&user.user_id, &path) {
+                Ok(()) => count += 1,
+                Err(e) => info!("Failed to purge {} for user {}: {}", path, user.user_id, e),
+            }
+        }
+        if count > 0 {
+            info!("Purged {} assets with excluded extensions for user {}", count, user.user_id);
         }
     }
 }
@@ -214,5 +230,62 @@ mod tests {
     fn no_excludes_allows_all() {
         let f = PathFilter { exclude_extensions: vec![] };
         assert!(!f.is_ignored(Path::new("video.mp4")));
+    }
+
+    fn test_config(exclude_extensions: Vec<String>) -> Config {
+        Config {
+            database_path: String::new(),
+            event_log: None,
+            immich: crate::config::ImmichConfig {
+                server_url: String::new(),
+                delete_threshold: 0,
+                delete_max_age: 3650,
+                delete_poll_interval: 0,
+                import_poll_interval: 0,
+                upload_poll_interval: 60,
+            },
+            users: vec![crate::config::UserConfig {
+                user_id: "user1".to_string(),
+                user_key: String::new(),
+                path: String::new(),
+            }],
+            exclude_extensions,
+        }
+    }
+
+    fn purge_test_db(dir: &tempfile::TempDir) -> Mutex<LocalDatabase> {
+        let db = LocalDatabase::open(&dir.path().join("test.db")).unwrap();
+        db.upsert_asset("user1", "video.mp4", &[1u8; 20], None, None).unwrap();
+        db.upsert_asset("user1", "keep.mp4", &[2u8; 20], Some("id-1"), None).unwrap();
+        db.upsert_asset("user1", "photo.jpg", &[3u8; 20], None, None).unwrap();
+        Mutex::new(db)
+    }
+
+    #[tokio::test]
+    async fn purge_removes_only_unlinked_excluded_assets() {
+        let dir = tempfile::tempdir().unwrap();
+        let local_db = purge_test_db(&dir);
+        let config = test_config(vec!["mp4".to_string()]);
+
+        purge_excluded_extensions(&local_db, &config).await;
+
+        let db = local_db.lock().await;
+        assert!(db.find_asset_by_path("user1", "video.mp4").unwrap().is_none());
+        assert!(db.find_asset_by_path("user1", "keep.mp4").unwrap().is_some());
+        assert!(db.find_asset_by_path("user1", "photo.jpg").unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn purge_with_no_excludes_keeps_everything() {
+        let dir = tempfile::tempdir().unwrap();
+        let local_db = purge_test_db(&dir);
+        let config = test_config(vec![]);
+
+        purge_excluded_extensions(&local_db, &config).await;
+
+        let db = local_db.lock().await;
+        assert!(db.find_asset_by_path("user1", "video.mp4").unwrap().is_some());
+        assert!(db.find_asset_by_path("user1", "keep.mp4").unwrap().is_some());
+        assert!(db.find_asset_by_path("user1", "photo.jpg").unwrap().is_some());
     }
 }
